@@ -3,6 +3,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import OpenAI from "openai";
 import { z } from "zod";
+import { track } from "./usage.js";
 
 const CONFIG_PATH = join(homedir(), ".config", "ai-workers.json");
 
@@ -42,7 +43,7 @@ function loadConfig(): LlmConfig {
   }
 }
 
-const config = loadConfig();
+let config = loadConfig();
 
 export type Message = OpenAI.Chat.Completions.ChatCompletionMessageParam;
 export type CompletionResult = { text: string; provider: string; model: string };
@@ -100,6 +101,7 @@ export async function complete(
         const resp = await clientFor(provider, idx).chat.completions.create({ model, messages });
         cursor[provider] = (idx + 1) % n; // advance so the next call starts on the next key
         failCount.delete(id);
+        track(provider, idx, true);
         return { text: resp.choices[0]?.message?.content ?? "", provider, model };
       } catch (err) {
         const status = (err as { status?: number }).status;
@@ -110,12 +112,21 @@ export async function complete(
               ? backoffMs(id)
               : 10_000;
         cooldownUntil.set(id, Date.now() + cd);
+        track(provider, idx, false);
         errors.push(`${id}: ${status ?? (err as Error).message}`);
       }
     }
   }
 
   throw new Error(`All LLM providers/keys exhausted — ${errors.join("; ")}`);
+}
+
+export function reloadConfig(): void {
+  config = loadConfig();
+  for (const key of Object.keys(cursor)) delete cursor[key];
+  cooldownUntil.clear();
+  failCount.clear();
+  clients.clear();
 }
 
 export function banner(body: string, meta: { provider: string; model: string }): string {

@@ -9,7 +9,14 @@ async function fetchAndExtract(url: string): Promise<string> {
   });
   const $ = load(html);
   $("script, style, nav, footer, header, aside").remove();
-  const text = $("body").text().replace(/\s+/g, " ").trim().slice(0, 50_000);
+  const text =
+    ($("article").text() ||
+      $("main").text() ||
+      $("[role=main]").text() ||
+      $("body").text())
+      .replace(/\s+/g, " ")
+      .trim()
+      .slice(0, 50_000);
   if (!text) throw new Error("No readable content found at URL");
   return text;
 }

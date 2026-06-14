@@ -6,6 +6,8 @@ MCP server that routes commodity NLP tasks (summarize, translate, rewrite, proof
 
 All exposed as `ai_*` MCP tools and as `/<verb>-ai` slash commands.
 
+### NLP tools
+
 | Tool | Input | What it does |
 |---|---|---|
 | `ai_summarize` | `url`/`text`, `format?` | Summarize a page or prose (`paragraph` or `bullets`) |
@@ -15,36 +17,55 @@ All exposed as `ai_*` MCP tools and as `/<verb>-ai` slash commands.
 | `ai_proofread` | `text`, `language?` | Correct and list fixes (language-aware) |
 | `ai_bullet` | `text`, `max?` | Turn prose into a bullet list (optional cap) |
 | `ai_outline` | `text`, `depth?` | Build a hierarchical outline (H1–H`depth`, default 3) |
-| `ai_classify` | `text`, `labels` | Classify into one label |
+| `ai_classify` | `text`, `labels`, `strategy?` | Classify into one label; overflow: `truncate` or `vote` |
 | `ai_extract` | `text`, `fields` | Extract fields as JSON |
-| `ai_qa` | `url`/`text`, `question` | Answer a question about content |
+| `ai_qa` | `url`/`text`, `question` | Answer a question about content (map-reduce for long texts) |
 | `ai_compare` | `text_a`, `text_b`, `focus?` | Compare two texts |
 | `ai_email_draft` | `bullets`, `tone?` | Draft an email from notes |
 | `ai_keywords` | `text`, `count?` | Extract top keywords (default 10) |
 | `ai_sentiment` | `text` | Sentiment analysis — label, confidence, summary |
 | `ai_title` | `text`, `count?` | Generate title suggestions (default 5) |
 
+### Observability & config tools
+
+| Tool | Input | What it does |
+|---|---|---|
+| `ai_usage` | — | Show today's request/error counts per provider/key |
+| `ai_reload_config` | — | Reload `~/.config/ai-workers.json` without restarting |
+| `ai_set_ttl` | `tool_name`, `ttl_ms` | Override cache TTL for a tool at runtime |
+
 Every response carries a provider/model banner: `🔷 **gemini · gemini-2.5-flash** ────`.
 
 ### Large-text support
 
-All text tools auto-chunk inputs over 50 000 characters and merge results (map-reduce for summarize, per-field merge for extract, concatenation for others). No manual splitting needed.
+All text tools auto-chunk inputs over 50 000 characters and merge results (map-reduce for summarize/qa, chunk-outline-merge for outline, majority-vote or truncate for classify, per-field merge for extract, concatenation for others). No manual splitting needed.
 
 ## Slash commands
 
-Each tool has three slash-command variants (45 total, in [.claude/commands/](.claude/commands/)):
+Each NLP tool has three slash-command variants (48 total, in [.claude/commands/](.claude/commands/)):
 
 - `/<verb>-ai` — result shown in chat (with banner)
 - `/<verb>-ai-replace` — replaces the editor selection
 - `/<verb>-ai-append` — inserts the result after the selection
 
-Verbs: `generate`, `summarize`, `translate`, `rewrite`, `proofread`, `list`, `outline`, `classify`, `extract`, `ask`, `compare`, `draft`, `keywords`, `sentiment`, `title`.
+NLP verbs: `generate`, `summarize`, `translate`, `rewrite`, `proofread`, `list`, `outline`, `classify`, `extract`, `ask`, `compare`, `draft`, `keywords`, `sentiment`, `title`.
+
+Observability verbs (chat only): `usage`, `check-limits`, `configure`.
 
 Input priority: **argument › editor selection › clipboard › interactive prompt**.
 
 Multi-value arguments use `/` as separator:
 - `/translate-ai en/es/nl` → translates into English, Spanish, and Dutch in one call
 - `/rewrite-ai formal/concise` → returns both rewrites in one response
+
+### Overflow handling
+
+For very long inputs (> 50 000 chars), slash commands for `classify` ask which strategy to use:
+1. **truncate** — classify the first 50 000 characters only
+2. **vote** — classify each chunk independently, return the majority label
+3. **skip** — cancel
+
+`/ask-ai` and `/outline-ai` handle overflow automatically (map-reduce and chunk-outline-merge respectively).
 
 ## Setup
 
@@ -74,7 +95,7 @@ Get a free Gemini key at [aistudio.google.com](https://aistudio.google.com). Use
 .\setup.ps1
 ```
 
-The installer builds the server, deploys the 45 slash commands to your user scope, and registers the MCP server in your Claude Code config.
+The installer builds the server, deploys the slash commands to your user scope, and registers the MCP server in your Claude Code config.
 
 ### 3. Reload Claude Code
 
@@ -90,7 +111,7 @@ A rules-based filter runs before any text leaves your machine. It **blocks** fil
 
 ## Configuration reference
 
-`~/.config/ai-workers.json` — read once at server start:
+`~/.config/ai-workers.json` — read once at server start (use `/configure-ai reload` or `ai_reload_config` to apply changes live):
 
 ```json
 {
@@ -120,22 +141,20 @@ A rules-based filter runs before any text leaves your machine. It **blocks** fil
 
 Round-robin rotates across a provider's keys; `429` triggers escalating cooldown (60s → 1h), `401/403` a long cooldown, then falls through to the next provider in `order`. Falls back to the `GEMINI_API_KEY` env var if no config file exists.
 
-After editing the config, reload Claude Code or call `reloadConfig()` programmatically (clears all cooldown/client state).
-
 ## Caching
 
 Text and URL results are cached in memory per tool:
 
-| Tool | TTL |
+| Tool | Default TTL |
 |---|---|
 | `ai_summarize`, `ai_qa` | 1 hour |
 | all others | 5 minutes |
 
-Cache keys are `sha1(toolName + messages)`. Override a tool's TTL at runtime via the Sprint 2 `/configure-ai` command.
+Override at runtime: `/configure-ai ttl <tool> <ms>` or call `ai_set_ttl` directly.
 
 ## Usage tracking
 
-Every LLM call is recorded to `~/.config/ai-workers-usage.json` (per-key ok/error counts, reset at Pacific midnight). View today's counts with the Sprint 2 `/usage-ai` command.
+Every LLM call is recorded to `~/.config/ai-workers-usage.json` (per-key ok/error counts, reset at Pacific midnight). Run `/usage-ai` or call `ai_usage` to see today's table.
 
 ## Rebuilding after changes
 
@@ -143,4 +162,4 @@ Every LLM call is recorded to `~/.config/ai-workers-usage.json` (per-key ok/erro
 npm run build
 ```
 
-Then reload Claude Code.
+Then reload Claude Code (or use `ai_reload_config` if only the JSON config changed).

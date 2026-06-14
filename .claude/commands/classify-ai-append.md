@@ -5,8 +5,9 @@ argument-hint: [catégories]
 
 Invoque `mcp__ai-workers__ai_classify` sur la sélection IDE, puis insère après.
 
-
 **Catégories :** `$ARGUMENTS` si c'est une liste de catégories (ex: bug / feature / question) → utilise-la. Sinon demande : *Quelles catégories ? (sépare par " / " ou virgule)*. Passe les catégories comme tableau au paramètre `labels`.
+
+**Overflow (texte > 50 000 caractères) :** demande la stratégie (`truncate` / `vote` / `skip`) avant d'appeler l'outil. Passe au paramètre `strategy`.
 
 1. Texte source = sélection IDE — si absente, demande
 2. Appelle `mcp__ai-workers__ai_classify`

@@ -1,5 +1,5 @@
 import { checkPrivacy } from "../privacy.js";
-import { gemini, MODEL } from "../gemini.js";
+import { complete, banner } from "../llm.js";
 
 export async function emailDraft(bullets: string | string[], tone?: string): Promise<string> {
   const bulletsText = Array.isArray(bullets) ? bullets.join("\n") : bullets;
@@ -7,16 +7,14 @@ export async function emailDraft(bullets: string | string[], tone?: string): Pro
   if (check.status === "block") throw new Error(check.reason);
 
   const toneClause = tone ?? "professional";
-  const response = await gemini.chat.completions.create({
-    model: MODEL,
-    messages: [
-      {
-        role: "user",
-        content: `Draft an email based on these bullet points. Tone: ${toneClause}. Return only the email body, no subject line:\n\n${bulletsText}`,
-      },
-    ],
-  });
+  const { text: output, provider, model } = await complete([
+    {
+      role: "user",
+      content: `Draft an email based on these bullet points. Tone: ${toneClause}. Return only the email body, no subject line:\n\n${bulletsText}`,
+    },
+  ]);
 
-  const result = response.choices[0]?.message?.content ?? "No response from Gemini";
-  return check.status === "warn" ? `[WARNING: ${check.reason}]\n\n${result}` : result;
+  const result = output || "No response";
+  const body = check.status === "warn" ? `[WARNING: ${check.reason}]\n\n${result}` : result;
+  return banner(body, { provider, model });
 }

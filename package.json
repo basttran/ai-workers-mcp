@@ -1,6 +1,6 @@
 {
-  "name": "gemini-worker-mcp",
-  "version": "0.1.0",
+  "name": "ai-workers-mcp",
+  "version": "0.2.0",
   "type": "module",
   "scripts": {
     "build": "tsc",
@@ -15,6 +15,6 @@
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
-    "typescript": "^5.0.0"
+    "typescript": "^5.9.3"
   }
 }

@@ -1,2 +1,12 @@
 node_modules/
 dist/
+
+# Local / personal Claude config — not part of this project, keep private
+.claude/skills/
+.claude/agents/
+.claude/settings.local.json
+.claude/scheduled_tasks.lock
+.claude/worktrees/
+
+# Scratch / test artifacts
+test-translate

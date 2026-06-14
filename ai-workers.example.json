@@ -1,0 +1,10 @@
+{
+  "order": ["gemini"],
+  "providers": {
+    "gemini": {
+      "baseURL": "https://generativelanguage.googleapis.com/v1beta/openai/",
+      "model": "gemini-2.5-flash",
+      "keys": ["YOUR_GEMINI_API_KEY_HERE"]
+    }
+  }
+}

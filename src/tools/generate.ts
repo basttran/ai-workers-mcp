@@ -1,5 +1,5 @@
 import { checkPrivacy, type PrivacyResult } from "../privacy.js";
-import { gemini, MODEL } from "../gemini.js";
+import { complete, banner } from "../llm.js";
 
 export async function generate(prompt: string, context?: string): Promise<string> {
   const promptCheck = checkPrivacy(prompt);
@@ -12,9 +12,10 @@ export async function generate(prompt: string, context?: string): Promise<string
   if (context) messages.push({ role: "system", content: context });
   messages.push({ role: "user", content: prompt });
 
-  const response = await gemini.chat.completions.create({ model: MODEL, messages });
-  const result = response.choices[0]?.message?.content ?? "No response from Gemini";
+  const { text, provider, model } = await complete(messages);
+  const result = text || "No response";
 
   const warn = [promptCheck, contextCheck].find((c) => c.status === "warn");
-  return warn && warn.status === "warn" ? `[WARNING: ${warn.reason}]\n\n${result}` : result;
+  const body = warn && warn.status === "warn" ? `[WARNING: ${warn.reason}]\n\n${result}` : result;
+  return banner(body, { provider, model });
 }

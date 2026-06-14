@@ -1,97 +1,105 @@
-# gemini-worker-mcp
+# ai-workers-mcp
 
-MCP server that routes commodity NLP tasks (summarize, translate, generate) to Gemini 2.0 Flash via its free tier, saving Claude tokens for work that actually needs them.
-
-**Free tier limits:** 15 req/min · 1 500 req/day · no billing required.
+MCP server that routes commodity NLP tasks (summarize, translate, rewrite, proofread, …) to **free-tier LLMs**, saving Claude tokens for work that actually needs them. Multi-provider, multi-account, with round-robin and automatic fallback.
 
 ## Tools
 
+All exposed as `ai_*` MCP tools and as `/<verb>-ai` slash commands.
+
 | Tool | Input | What it does |
 |---|---|---|
-| `gemini_summarize` | `url` | Fetches the page, strips boilerplate, returns a concise summary |
-| `gemini_translate` | `text`, `target_lang` | Translates plain prose to the target language |
-| `gemini_generate` | `prompt`, `context?` | Generates text from a prompt with an optional system context |
+| `ai_summarize` | `url` or `text` | Summarize a page or pasted prose |
+| `ai_translate` | `text`, `target_lang` | Translate to a target language |
+| `ai_generate` | `prompt`, `context?` | Generate text from a prompt |
+| `ai_rewrite` | `text`, `style` | Rewrite in a given tone/style |
+| `ai_proofread` | `text` | Correct and list fixes |
+| `ai_bullet` | `text` | Turn prose into a bullet list |
+| `ai_outline` | `text` | Build a hierarchical outline |
+| `ai_classify` | `text`, `labels` | Classify into one label |
+| `ai_extract` | `text`, `fields` | Extract fields as JSON |
+| `ai_qa` | `url`/`text`, `question` | Answer a question about content |
+| `ai_compare` | `text_a`, `text_b`, `focus?` | Compare two texts |
+| `ai_email_draft` | `bullets`, `tone?` | Draft an email from notes |
 
-All tools reject code, file paths, and secrets before sending anything to Gemini (see [Privacy](#privacy)).
+Every response carries a banner showing which provider/model answered: `🔷 **gemini · gemini-2.5-flash** ────`.
+
+## Slash commands
+
+Each tool has three slash-command variants (36 total, in [.claude/commands/](.claude/commands/)):
+
+- `/<verb>-ai` — result shown in chat (with banner)
+- `/<verb>-ai-replace` — replaces the editor selection (banner stripped)
+- `/<verb>-ai-append` — inserts the result after the selection (banner stripped)
+
+Verbs: `generate`, `summarize`, `translate`, `rewrite`, `proofread`, `list`, `outline`, `classify`, `extract`, `ask`, `compare`, `draft`.
+
+Input priority: **argument › editor selection › clipboard › interactive prompt**.
 
 ## Setup
 
-### 1. Get a free Gemini API key
+### 1. Configure providers & keys
 
-Go to [aistudio.google.com](https://aistudio.google.com), sign in, and create an API key. The key starts with `AIza…`.
-
-### 2. Build
+Copy the example and add your key(s):
 
 ```bash
-git clone <this-repo> gemini-worker-mcp
-cd gemini-worker-mcp
-npm install
-npm run build
+cp ai-workers.example.json ~/.config/ai-workers.json
+chmod 600 ~/.config/ai-workers.json
+# edit ~/.config/ai-workers.json
 ```
 
-### 3. Register with Claude Code
+Get a free Gemini key at [aistudio.google.com](https://aistudio.google.com). Use `gemini-2.5-flash` (the free tier; `gemini-2.0-flash` is paid-only). Add more keys to multiply your free quota, or add another provider block (Groq, Mistral, OpenRouter — any OpenAI-compatible endpoint) to `order` for cross-provider fallback.
 
-Add the `mcpServers` block to your Claude Code `settings.json` (`~/.claude/settings.json` for global, or `.claude/settings.json` in a project):
+### 2. Install (cross-platform)
+
+**macOS / Linux / inside WSL:**
+
+```bash
+./setup.sh
+```
+
+**Windows (Claude Code on Windows, server in WSL):**
+
+```powershell
+.\setup.ps1
+```
+
+The installer builds the server, deploys the 36 slash commands to your user scope, and registers the MCP server in your Claude Code config (`node` launch on Unix, `wsl.exe` launch on Windows).
+
+### 3. Reload Claude Code
+
+Run `/mcp` to confirm `ai-workers` is connected.
+
+## Portability
+
+The core (`src/**`) is plain Node — runs identically on macOS, Linux, WSL, and Windows. The only platform-specific glue is the per-machine MCP registration, handled by the two setup scripts. Secrets live solely in `~/.config/ai-workers.json` (resolved via `homedir()`), never in the Claude config.
+
+## Privacy
+
+A rules-based filter runs before any text leaves your machine. It **blocks** file paths, code patterns, and credential patterns (sends nothing, returns an error), and **warns** on emails/phone numbers (prepends a notice, still sends). Keep inputs plain prose.
+
+## Configuration reference
+
+`~/.config/ai-workers.json` (read once at server start — reload Claude Code after edits):
 
 ```json
 {
-  "mcpServers": {
-    "gemini-worker": {
-      "command": "node",
-      "args": ["/path/to/gemini-worker-mcp/dist/index.js"],
-      "env": {
-        "GEMINI_API_KEY": "AIza…your-key-here"
-      }
+  "order": ["gemini"],
+  "providers": {
+    "gemini": {
+      "baseURL": "https://generativelanguage.googleapis.com/v1beta/openai/",
+      "model": "gemini-2.5-flash",
+      "keys": ["KEY_1", "KEY_2"]
     }
   }
 }
 ```
 
-Replace `/path/to/gemini-worker-mcp/` with the absolute path to where you cloned the repo.
-
-### 4. Restart Claude Code
-
-MCP servers load at startup. Fully quit and reopen. Run `/mcp` to confirm `gemini-worker` appears as connected.
-
-## Usage
-
-Tell Claude explicitly to delegate:
-
-```
-Use gemini_summarize on https://example.com/some-long-article
-```
-
-```
-Use gemini_translate to translate this paragraph to Japanese: "…"
-```
-
-```
-Use gemini_generate to write a short product description for a CLI dev tool
-```
-
-## Privacy
-
-A rules-based filter runs before any text is sent to Gemini. It **blocks** (returns an error, sends nothing):
-
-- File paths (`/home/`, `./src/`, `~/`)
-- Code patterns (backtick blocks, `function`, `const`, `import`)
-- Credential patterns (`API_KEY=`, `SECRET=`, `TOKEN=`, `PASSWORD=`)
-
-It **warns** (prepends a notice, still sends):
-
-- Email addresses
-- Phone numbers
-
-Keep inputs plain prose. Passing code or config to these tools will error intentionally.
+Round-robin rotates across a provider's keys; `429` triggers escalating cooldown (60s → 1h), `401/403` a long cooldown, then it falls through to the next provider in `order`. Falls back to the `GEMINI_API_KEY` env var if no config file exists.
 
 ## Rebuilding after changes
 
 ```bash
-npm run build
+npm run build   # in WSL on Windows
 ```
 
-Then restart Claude Code to reload the server.
-
-## Extending
-
-Each tool is a self-contained module under `src/tools/`. The Gemini client in `src/gemini.ts` uses the OpenAI-compatible endpoint — swapping to Groq, Mistral, or OpenRouter is a one-line change (base URL + key).
+Then reload Claude Code.

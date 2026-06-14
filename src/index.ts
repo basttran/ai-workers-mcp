@@ -3,6 +3,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod";
 import { bullet } from "./tools/bullet.js";
 import { classify } from "./tools/classify.js";
+import { runReloadConfig, runSetTtl } from "./tools/config.js";
 import { compare } from "./tools/compare.js";
 import { emailDraft } from "./tools/email_draft.js";
 import { extract } from "./tools/extract.js";
@@ -16,10 +17,11 @@ import { sentiment } from "./tools/sentiment.js";
 import { summarize } from "./tools/summarize.js";
 import { titleSuggest } from "./tools/title.js";
 import { translate } from "./tools/translate.js";
+import { formatUsageTable } from "./usage.js";
 
 const server = new McpServer({
   name: "ai-workers",
-  version: "0.3.0",
+  version: "0.4.0",
 });
 
 server.tool(
@@ -113,9 +115,10 @@ server.tool(
   {
     text: z.string().describe("Plain text to classify"),
     labels: z.array(z.string()).min(1).describe("List of category labels to classify into"),
+    strategy: z.enum(["truncate", "vote"]).optional().describe("Overflow strategy for text > 50k chars: truncate (first 50k only) or vote (classify each chunk, pick majority). Defaults to vote."),
   },
-  async ({ text, labels }) => ({
-    content: [{ type: "text" as const, text: await classify(text, labels) }],
+  async ({ text, labels, strategy }) => ({
+    content: [{ type: "text" as const, text: await classify(text, labels, strategy) }],
   })
 );
 
@@ -201,6 +204,36 @@ server.tool(
   },
   async ({ text, count }) => ({
     content: [{ type: "text" as const, text: await titleSuggest(text, count) }],
+  })
+);
+
+server.tool(
+  "ai_usage",
+  "Show today's LLM usage stats (requests and errors per provider/key).",
+  {},
+  async () => ({
+    content: [{ type: "text" as const, text: formatUsageTable() }],
+  })
+);
+
+server.tool(
+  "ai_reload_config",
+  "Reload ~/.config/ai-workers.json without restarting the server. Clears all cooldowns and cached clients.",
+  {},
+  async () => ({
+    content: [{ type: "text" as const, text: runReloadConfig() }],
+  })
+);
+
+server.tool(
+  "ai_set_ttl",
+  "Override the in-memory cache TTL for a specific tool at runtime.",
+  {
+    tool_name: z.string().describe("Tool name, e.g. 'summarize', 'qa', 'translate'"),
+    ttl_ms: z.number().int().positive().describe("TTL in milliseconds, e.g. 1800000 for 30 minutes"),
+  },
+  async ({ tool_name, ttl_ms }) => ({
+    content: [{ type: "text" as const, text: runSetTtl(tool_name, ttl_ms) }],
   })
 );
 

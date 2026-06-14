@@ -1,10 +1,23 @@
 {
-  "order": ["gemini"],
+  "order": ["gemini", "groq", "mistral"],
   "providers": {
     "gemini": {
       "baseURL": "https://generativelanguage.googleapis.com/v1beta/openai/",
       "model": "gemini-2.5-flash",
-      "keys": ["YOUR_GEMINI_API_KEY_HERE"]
+      "keys": ["YOUR_GEMINI_API_KEY_HERE"],
+      "dailyLimit": 1000
+    },
+    "groq": {
+      "baseURL": "https://api.groq.com/openai/v1/",
+      "model": "llama-3.3-70b-versatile",
+      "keys": ["YOUR_GROQ_KEY_HERE"],
+      "dailyLimit": 1000
+    },
+    "mistral": {
+      "baseURL": "https://api.mistral.ai/v1/",
+      "model": "mistral-small-latest",
+      "keys": ["YOUR_MISTRAL_KEY_HERE"],
+      "dailyLimit": 1000
     }
   }
 }

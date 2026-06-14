@@ -1,22 +1,25 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
-import { summarize } from "./tools/summarize.js";
-import { translate } from "./tools/translate.js";
-import { generate } from "./tools/generate.js";
-import { rewrite } from "./tools/rewrite.js";
-import { proofread } from "./tools/proofread.js";
 import { bullet } from "./tools/bullet.js";
-import { outline } from "./tools/outline.js";
 import { classify } from "./tools/classify.js";
-import { extract } from "./tools/extract.js";
-import { qa } from "./tools/qa.js";
 import { compare } from "./tools/compare.js";
 import { emailDraft } from "./tools/email_draft.js";
+import { extract } from "./tools/extract.js";
+import { generate } from "./tools/generate.js";
+import { keywords } from "./tools/keywords.js";
+import { outline } from "./tools/outline.js";
+import { proofread } from "./tools/proofread.js";
+import { qa } from "./tools/qa.js";
+import { rewrite } from "./tools/rewrite.js";
+import { sentiment } from "./tools/sentiment.js";
+import { summarize } from "./tools/summarize.js";
+import { titleSuggest } from "./tools/title.js";
+import { translate } from "./tools/translate.js";
 
 const server = new McpServer({
   name: "ai-workers",
-  version: "0.2.0",
+  version: "0.3.0",
 });
 
 server.tool(
@@ -25,21 +28,22 @@ server.tool(
   {
     url: z.string().url().optional().describe("URL to fetch and summarize"),
     text: z.string().optional().describe("Plain text to summarize"),
+    format: z.enum(["paragraph", "bullets"]).optional().describe("Output format (default: paragraph)"),
   },
-  async ({ url, text }) => ({
-    content: [{ type: "text" as const, text: await summarize({ url, text }) }],
+  async ({ url, text, format }) => ({
+    content: [{ type: "text" as const, text: await summarize({ url, text, format }) }],
   })
 );
 
 server.tool(
   "ai_translate",
-  "Translate plain text to a target language using a configured free LLM. Plain prose only — no code, secrets, or file paths.",
+  "Translate plain text to one or more target languages using a configured free LLM. Plain prose only — no code, secrets, or file paths.",
   {
     text: z.string().describe("Plain text to translate"),
-    target_lang: z.string().describe("Target language, e.g. 'French', 'Japanese'"),
+    target_langs: z.array(z.string()).min(1).describe("Target languages, e.g. ['French', 'Japanese']"),
   },
-  async ({ text, target_lang }) => ({
-    content: [{ type: "text" as const, text: await translate(text, target_lang) }],
+  async ({ text, target_langs }) => ({
+    content: [{ type: "text" as const, text: await translate(text, target_langs) }],
   })
 );
 
@@ -57,40 +61,49 @@ server.tool(
 
 server.tool(
   "ai_rewrite",
-  "Rewrite plain text in a given style using a configured free LLM. Plain prose only — no code, secrets, or file paths.",
+  "Rewrite plain text in one or more styles using a configured free LLM. Plain prose only — no code, secrets, or file paths.",
   {
     text: z.string().describe("Plain text to rewrite"),
-    style: z.string().describe("Target style, e.g. 'formal', 'casual', 'concise', 'technical'"),
+    styles: z.array(z.string()).min(1).describe("Target styles, e.g. ['formal', 'concise']"),
   },
-  async ({ text, style }) => ({
-    content: [{ type: "text" as const, text: await rewrite(text, style) }],
+  async ({ text, styles }) => ({
+    content: [{ type: "text" as const, text: await rewrite(text, styles) }],
   })
 );
 
 server.tool(
   "ai_proofread",
   "Proofread plain text and list corrections using a configured free LLM. Plain prose only — no code, secrets, or file paths.",
-  { text: z.string().describe("Plain text to proofread") },
-  async ({ text }) => ({
-    content: [{ type: "text" as const, text: await proofread(text) }],
+  {
+    text: z.string().describe("Plain text to proofread"),
+    language: z.string().optional().describe("Language or variant to proofread for, e.g. 'French', 'British English' (default: auto-detect)"),
+  },
+  async ({ text, language }) => ({
+    content: [{ type: "text" as const, text: await proofread(text, language) }],
   })
 );
 
 server.tool(
   "ai_bullet",
   "Extract key points from plain text as a markdown bullet list using a configured free LLM. Plain prose only — no code, secrets, or file paths.",
-  { text: z.string().describe("Plain text to extract bullet points from") },
-  async ({ text }) => ({
-    content: [{ type: "text" as const, text: await bullet(text) }],
+  {
+    text: z.string().describe("Plain text to extract bullet points from"),
+    max: z.number().int().positive().optional().describe("Maximum number of bullet points to return"),
+  },
+  async ({ text, max }) => ({
+    content: [{ type: "text" as const, text: await bullet(text, max) }],
   })
 );
 
 server.tool(
   "ai_outline",
   "Create a hierarchical markdown outline from plain text using a configured free LLM. Plain prose only — no code, secrets, or file paths.",
-  { text: z.string().describe("Plain text to outline") },
-  async ({ text }) => ({
-    content: [{ type: "text" as const, text: await outline(text) }],
+  {
+    text: z.string().describe("Plain text to outline"),
+    depth: z.number().int().min(1).max(6).optional().describe("Maximum heading depth (default: 3)"),
+  },
+  async ({ text, depth }) => ({
+    content: [{ type: "text" as const, text: await outline(text, depth) }],
   })
 );
 
@@ -153,6 +166,41 @@ server.tool(
   },
   async ({ bullets, tone }) => ({
     content: [{ type: "text" as const, text: await emailDraft(bullets, tone) }],
+  })
+);
+
+server.tool(
+  "ai_keywords",
+  "Extract top keywords from plain text.",
+  {
+    text: z.string().describe("Plain text to extract keywords from"),
+    count: z.number().int().positive().optional().describe("Number of keywords (default 10)"),
+  },
+  async ({ text, count }) => ({
+    content: [{ type: "text" as const, text: await keywords(text, count) }],
+  })
+);
+
+server.tool(
+  "ai_sentiment",
+  "Analyze sentiment of plain text. Returns label, confidence, and summary.",
+  {
+    text: z.string().describe("Plain text to analyze"),
+  },
+  async ({ text }) => ({
+    content: [{ type: "text" as const, text: await sentiment(text) }],
+  })
+);
+
+server.tool(
+  "ai_title",
+  "Generate title suggestions for plain text.",
+  {
+    text: z.string().describe("Plain text to generate titles for"),
+    count: z.number().int().positive().optional().describe("Number of titles to generate (default 5)"),
+  },
+  async ({ text, count }) => ({
+    content: [{ type: "text" as const, text: await titleSuggest(text, count) }],
   })
 );
 
